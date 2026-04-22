@@ -1,0 +1,17 @@
+# PHP
+vendor/
+composer.lock
+.php_cs.cache
+
+# XAMPP / Local Server
+*.log
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code / IDE
+.vscode/
+.idea/
+nbproject/private/
