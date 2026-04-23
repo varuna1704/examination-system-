@@ -4,6 +4,23 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 include 'config.php'; // MySQL connection
+include 'QuestionGenerator.php'; // Advanced Question Generator
+
+$generator = new QuestionGenerator($conn);
+
+// Create questions table if not exists (Smart System Behavior)
+$conn->query("CREATE TABLE IF NOT EXISTS questions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subject VARCHAR(50),
+    level VARCHAR(20),
+    question TEXT,
+    option_a TEXT,
+    option_b TEXT,
+    option_c TEXT,
+    option_d TEXT,
+    correct_answer VARCHAR(1),
+    explanation TEXT
+)");
 
 $submit = $_POST['submit'] ?? '';
 $ans = $_POST['ans'] ?? null;
@@ -46,6 +63,11 @@ if(isset($_GET['subname']) && isset($_GET['level']))
 
 $subname = $_SESSION['subname'] ?? '';
 $level = $_SESSION['level'] ?? '';
+
+// 1.5 Smart Auto-Generation (Simulation of real-world platform scaling)
+if(!empty($subname) && !empty($level)) {
+    $generator->ensurePool($subname, $level, 5); // Ensure at least 5 questions exist
+}
 
 // 2. Fetch Questions (Randomized)
 if(!isset($_SESSION['question_ids']) && !empty($subname)) {
