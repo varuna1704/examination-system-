@@ -1,5 +1,7 @@
 # 🎓 ExamPortal Pro - Modern Online Examination System
 
+![ExamPortal Banner](screenshots/banner.png)
+
 [![PHP Version](https://img.shields.io/badge/PHP-8.x-777bb4?style=flat-square&logo=php)](https://www.php.net/)
 [![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=flat-square&logo=mysql)](https://www.mysql.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -45,16 +47,16 @@
 
 ## 📸 Screenshots
 
-> [!NOTE]
-> *Replace the placeholders below with actual screenshots of your project once deployed.*
+> [!TIP]
+> *Experience the premium UI/UX of ExamPortal Pro below.*
 
 | **Login Page** | **Subject Selection** |
 | :---: | :---: |
-| ![Login Page Placeholder](https://via.placeholder.com/400x250?text=Login+Page+Screenshot) | ![Dashboard Placeholder](https://via.placeholder.com/400x250?text=Subject+Dashboard+Screenshot) |
+| ![Login UI](screenshots/login.png) | ![Dashboard UI](screenshots/dashboard.png) |
 
 | **Active Quiz** | **Result Analysis** |
 | :---: | :---: |
-| ![Quiz Page Placeholder](https://via.placeholder.com/400x250?text=Timed+Quiz+Screenshot) | ![Result Page Placeholder](https://via.placeholder.com/400x250?text=Result+Page+Screenshot) |
+| ![Quiz UI](screenshots/quiz.png) | ![Result UI](screenshots/result.png) |
 
 ---
 
