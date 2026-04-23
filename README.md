@@ -121,7 +121,7 @@ The system relies on a well-normalized database schema:
 
 **Varuna Nikam**
 - GitHub: [@varuna1704](https://github.com/varuna1704)
-- Portfolio: [Link to Portfolio]
+- Portfolio: [(https://varuna-nikam.vercel.app/)]
 
 ---
 
