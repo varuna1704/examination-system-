@@ -1,25 +1,66 @@
-<html>
-    <head>
-        <title>Online Quiz test</title>
-        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-        <link href="Style1.css" rel="stylesheet" type="text/css"/>
-    </head>
-    <body>
-        <?php
-        
-        include 'user_Header.php';
-        
-        //echo '<p align="right"><a href="Logout.php"><font size="4" color="red">Sign Out</font></a></p>';
-        include 'con_pg.php';
-        echo "<table align=center>";
-        echo "<tr><td align><font size=6 color=black><b><br>SELECT SUBJECT TO GIVE<br></b></font></td></tr>";
-        $result= pg_query($con, "select * from subject") or die(pg_last_error($con));
-        echo "<tr><td><table></td></tr>";
-        while($row=pg_fetch_row($result))
-        {
-            echo "<tr><td><a href=quiz.php?sub_id=$row[0]><br><font size=5>$row[1]<br></font></a>";
-        }
-        echo "</table></table>";
-       ?>
-    </body>
+<?php
+session_start();
+include 'config.php';
+if(!isset($_SESSION['u_name'])) {
+    header("Location: index.php");
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | ExamPortal Pro</title>
+    <link rel="stylesheet" href="modern-style.css">
+</head>
+<body>
+    <?php include("modern_header.php"); ?>
+    
+    <div class="container">
+        <div style="margin-bottom: 3rem;">
+            <h1>Subject Selection Dashboard</h1>
+            <p class="text-muted">Choose a subject below to begin your examination. Each test is timed and monitored.</p>
+        </div>
+
+        <div class="subject-grid">
+            <?php
+            // Ensure subject table exists in MySQL and has data
+            $conn->query("CREATE TABLE IF NOT EXISTS subject (sub_id INT AUTO_INCREMENT PRIMARY KEY, sub_name VARCHAR(100))");
+            $check = $conn->query("SELECT * FROM subject");
+            if($check->num_rows == 0) {
+                $conn->query("INSERT INTO subject (sub_name) VALUES ('Java Programming Language'), ('PHP Programming Language'), ('Python Programming Language'), ('C Language'), ('Data Structure')");
+                $check = $conn->query("SELECT * FROM subject");
+            }
+
+            $icons = [
+                'Java' => '☕',
+                'Python' => '🐍',
+                'C Language' => '💻',
+                'PHP' => '🐘',
+                'Data Structure' => '📊',
+                'Default' => '📚'
+            ];
+
+            while($row = $check->fetch_assoc()) {
+                $subject_name = $row['sub_name'];
+                $sub_id = $row['sub_id'];
+                $icon = '📚';
+                foreach($icons as $key => $val) {
+                    if(strpos($subject_name, $key) !== false) {
+                        $icon = $val;
+                        break;
+                    }
+                }
+                echo "
+                <a href='levels.php?subid=$sub_id&testid=$sub_id&subname=".urlencode($subject_name)."' class='subject-card'>
+                    <span class='subject-icon'>$icon</span>
+                    <span class='subject-title'>$subject_name</span>
+                    <p class='text-muted' style='margin-top: 1rem;'>Start Examination &rarr;</p>
+                </a>";
+            }
+            ?>
+        </div>
+    </div>
+</body>
 </html>

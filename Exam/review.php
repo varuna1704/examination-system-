@@ -1,59 +1,83 @@
 <?php
 session_start();
-$submit = $_POST['submit'] ?? '';
-extract($_POST);
-extract($_SESSION);
-include 'con_pg.php';
-if($submit=='Finish')
-{
-    pg_query($con, "delete from useranswer where sess_id='".session_id()."'") or die(pg_last_error($con));
-    unset($_SESSION['qn']);
-    header("location:index.php");
+include 'config.php';
+
+if(!isset($_SESSION['u_name']) || !isset($_SESSION['question_ids'])) {
+    header("Location: index.php");
     exit;
 }
+
+$ids = $_SESSION['question_ids'];
+$responses = $_SESSION['user_responses'] ?? [];
 ?>
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Online quiz review</title>
-        <meta http-equiv="Content-Type" content="text/html; charset=utf-8"><!-- comment -->
-        <link href="style.css" rel="stylesheet" type="text/css"/><!-- comment -->        
-    </head>
-    <body>
-        <?php
-        echo "<center>";
-        include 'con_pg.php';
-        echo "</center>";
-        echo '<p align="right"><a href="Logout.php"><font size="4" color="red">Logout</font></a></p>';
-        echo '<p align=center><font size=8 color=red>Review Test Question</font></p>';
-        if(!isset($_SESSION['qn']))
-        {
-            $_SESSION['qn']=0;
-        }
-        else if($submit=='Next Question')
-        {
-            $_SESSION['qn']=$_SESSION['qn']+1;
-        }
-        $result=pg_query($con, "select * from useranswer where sess_id='". session_id()."'") or die(pg_last_error($con));
-        pg_result_seek($result,$_SESSION['qn']);
-        $row= pg_fetch_row($result);
-        echo "<form method=post action=review.php>";
-        echo "<table width=100%><tr><td width=30>";
-        $n=$_SESSION['qn']+1;
-        echo "<tr><td align=center><font size=6>Que ".$n.": ".($row[2] ?? 'N/A')."</font>";
-        echo "<tr><td align=center class=".((isset($row[7]) && $row[7]==1)?'tans':'style8')."><font size=5>".($row[3] ?? '')."</font>";
-        echo "<tr><td align=center class=".((isset($row[7]) && $row[7]==2)?'tans':'style8')."><font size=5>".($row[4] ?? '')."</font>";
-        echo "<tr><td align=center class=".((isset($row[7]) && $row[7]==3)?'tans':'style8')."><font size=5>".($row[5] ?? '')."</font>";
-        echo "<tr><td align=center class=".((isset($row[7]) && $row[7]==4)?'tans':'style8')."><font size=5>".($row[6] ?? '')."</font>";
-        if($_SESSION['qn'] < pg_num_rows($result)-1)
-        {
-            echo "<tr><td align=center><input type=submit name=submit value='Next Question'></form></td></tr>";
-        }
-        else
-        {
-            echo "<tr><td align=center><input type=submit name=submit value='Finish'></form></td></tr>";
-        }
-        echo "</table>"; 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Answers | ExamPortal Pro</title>
+    <link rel="stylesheet" href="modern-style.css">
+    <style>
+        .review-item { margin-bottom: 2rem; padding: 1.5rem; border-radius: var(--radius); background: white; box-shadow: var(--shadow); border-left: 10px solid transparent; }
+        .correct-border { border-left-color: #22c55e; }
+        .wrong-border { border-left-color: #ef4444; }
+        .ans-option { padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0; }
+        .correct-ans { background: #dcfce7; color: #166534; }
+        .wrong-ans { background: #fee2e2; color: #991b1b; }
+        .explanation-box { margin-top: 1rem; padding: 1rem; background: var(--gray-50); border-radius: 8px; font-style: italic; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+    <?php include("modern_header.php"); ?>
+    
+    <div class="container">
+        <div style="margin-bottom: 3rem;">
+            <h1>Review Your Answers</h1>
+            <p class="text-muted">Analyze your performance and learn from the detailed explanations below.</p>
+        </div>
+
+        <?php 
+        foreach($ids as $index => $qid): 
+            $stmt = $conn->prepare("SELECT * FROM questions WHERE id = ?");
+            $stmt->bind_param("i", $qid);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            
+            $user_ans = $responses[$qid] ?? null;
+            $correct_letter = strtoupper($row['correct_answer']);
+            $correct_num = ord($correct_letter) - 64; 
+            
+            $is_correct = ($user_ans == $correct_num);
+            $border_class = $is_correct ? 'correct-border' : 'wrong-border';
         ?>
-    </body>
+            <div class="review-item <?php echo $border_class; ?>">
+                <h3>Que <?php echo ($index + 1); ?>: <?php echo htmlspecialchars($row['question']); ?></h3>
+                
+                <?php
+                $opts = [1 => $row['option_a'], 2 => $row['option_b'], 3 => $row['option_c'], 4 => $row['option_d']];
+                foreach($opts as $num => $text):
+                    $is_user_choice = ($user_ans == $num);
+                    $is_this_correct = ($correct_num == $num);
+                    $class = "";
+                    if($is_this_correct) $class = "correct-ans";
+                    else if($is_user_choice) $class = "wrong-ans";
+                ?>
+                    <div class="ans-option <?php echo $class; ?>">
+                        <?php echo $num; ?>. <?php echo htmlspecialchars($text); ?> 
+                        <?php if($is_user_choice) echo " <strong>(Your Choice)</strong>"; ?>
+                        <?php if($is_this_correct && !$is_user_choice) echo " <strong>(Correct Answer)</strong>"; ?>
+                    </div>
+                <?php endforeach; ?>
+
+                <div class="explanation-box">
+                    <strong>Explanation:</strong> <?php echo htmlspecialchars($row['explanation']); ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+
+        <div class="text-center" style="margin-top: 3rem;">
+            <a href="subject.php" class="btn">Finish Review & Go to Dashboard</a>
+        </div>
+    </div>
+</body>
 </html>

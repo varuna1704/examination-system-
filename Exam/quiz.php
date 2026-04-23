@@ -1,104 +1,195 @@
 <?php
 session_start();
-error_reporting(1);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+include 'config.php'; // MySQL connection
+
 $submit = $_POST['submit'] ?? '';
 $ans = $_POST['ans'] ?? null;
-include 'con_pg.php';
-include 'user_Header.php';
-extract($_GET);
-extract($_POST);
-extract($_SESSION);
 
-$tid = $_SESSION['tid'] ?? 0;
-$query = "select * from question where test_id=$tid";
-$result = pg_query($con, $query) or die(pg_last_error($con));
+// DEBUG OPTION: Print subject and level values if requested
+if(isset($_GET['debug'])) {
+    echo "<div style='background: #333; color: #fff; padding: 1rem;'>";
+    echo "DEBUG INFO:<br>";
+    echo "Subject: " . ($_GET['subname'] ?? 'NULL') . "<br>";
+    echo "Level: " . ($_GET['level'] ?? 'NULL') . "<br>";
+    echo "Session Level: " . ($_SESSION['level'] ?? 'NULL') . "<br>";
+    echo "</div>";
+}
 
-if(isset($subid) && isset($testid))
+// 1. Handle Level Selection Entry
+if(isset($_GET['subname']) && isset($_GET['level']))
 {
-    $_SESSION['sid']=$subid;
-    $_SESSION['tid']=$testid;
-    header("location:quiz.php");
+    // Fix subject name mismatch (e.g. "Java Programming Language" -> "Java")
+    $subname = $_GET['subname'];
+    if(stripos($subname, 'Java') !== false) $subname = 'Java';
+    if(stripos($subname, 'Python') !== false) $subname = 'Python';
+    if(stripos($subname, 'PHP') !== false) $subname = 'PHP';
+    if(stripos($subname, 'C Language') !== false) $subname = 'C';
+    if(stripos($subname, 'Data Structure') !== false) $subname = 'DS';
+
+    $_SESSION['subname'] = $subname;
+    $_SESSION['level'] = $_GET['level'];
+    
+    // Set timer
+    $durations = ['Easy' => 15, 'Medium' => 20, 'Hard' => 30, 'Advanced' => 45, 'Expert' => 60];
+    $_SESSION['end_time'] = time() + ($durations[$_SESSION['level']] * 60);
+    
+    // Reset Quiz State
+    unset($_SESSION['question_ids']);
+    unset($_SESSION['qn']);
+    
+    header("Location: quiz.php");
     exit;
+}
+
+$subname = $_SESSION['subname'] ?? '';
+$level = $_SESSION['level'] ?? '';
+
+// 2. Fetch Questions (Randomized)
+if(!isset($_SESSION['question_ids']) && !empty($subname)) {
+    // USE PREPARED STATEMENTS & LOWER() for case-insensitive matching
+    $stmt = $conn->prepare("SELECT id FROM questions WHERE LOWER(subject) = LOWER(?) AND LOWER(level) = LOWER(?) ORDER BY RAND()");
+    $stmt->bind_param("ss", $subname, $level);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    
+    $ids = [];
+    while($r = $res->fetch_assoc()) { $ids[] = $r['id']; }
+    
+    $_SESSION['question_ids'] = $ids;
+    $_SESSION['qn'] = 0;
+    $_SESSION['true_ans'] = 0;
+    
+    // Clear previous answers (Optional: handle with session or temp table)
+    $_SESSION['user_responses'] = [];
+}
+
+$ids = $_SESSION['question_ids'] ?? [];
+$num_rows = count($ids);
+
+// 3. Process Answer Submission
+if($submit && isset($_SESSION['qn'])) {
+    $current_id = $ids[$_SESSION['qn']];
+    
+    // Store response
+    $_SESSION['user_responses'][$current_id] = $ans;
+    
+    // Check if correct
+    $stmt = $conn->prepare("SELECT correct_answer FROM questions WHERE id = ?");
+    $stmt->bind_param("i", $current_id);
+    $stmt->execute();
+    $correct = $stmt->get_result()->fetch_assoc()['correct_answer'];
+    
+    // Convert 'A', 'B', 'C', 'D' to 1, 2, 3, 4 for compatibility
+    $correct_num = ord(strtoupper($correct)) - 64; 
+    
+    if($ans == $correct_num) {
+        $_SESSION['true_ans']++;
+    }
+
+    $_SESSION['qn']++;
+
+    if($_SESSION['qn'] >= $num_rows || $submit == 'Get Result') {
+        header("Location: result.php");
+        exit;
+    }
+    header("Location: quiz.php");
+    exit;
+}
+
+// 4. Fetch Current Question Data
+$row = null;
+if($num_rows > 0 && $_SESSION['qn'] < $num_rows) {
+    $current_id = $ids[$_SESSION['qn']];
+    $stmt = $conn->prepare("SELECT * FROM questions WHERE id = ?");
+    $stmt->bind_param("i", $current_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
 }
 
 ?>
 <!DOCTYPE html>
-<html>
-    <head>
-    <title>Online quiz</title>
-    <meta http-equiv="Content-Type" content="text/html" charset="utf-8"><!-- comment -->
-    <link rel="stylesheet" typpe="text/css" href="style.css"/>
-    </head>
-        <body>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz | ExamPortal Pro</title>
+    <link rel="stylesheet" href="modern-style.css">
+    <script>
+        function startTimer(duration, display) {
+            var timer = duration, minutes, seconds;
+            var interval = setInterval(function () {
+                minutes = parseInt(timer / 60, 10);
+                seconds = parseInt(timer % 60, 10);
+                minutes = minutes < 10 ? "0" + minutes : minutes;
+                seconds = seconds < 10 ? "0" + seconds : seconds;
+                display.textContent = minutes + ":" + seconds;
+                if (--timer < 0) {
+                    clearInterval(interval);
+                    alert("Time is up! Your exam will be submitted automatically.");
+                    document.getElementById('quizForm').submit();
+                }
+            }, 1000);
+        }
+        window.onload = function () {
+            var remaining = <?php echo max(0, ($_SESSION['end_time'] ?? time()) - time()); ?>;
+            var display = document.querySelector('#time');
+            if(display) startTimer(remaining, display);
+        };
+    </script>
+</head>
+<body>
+    <?php include("modern_header.php"); ?>
+    
+    <div class="container flex-center" style="flex-direction: column;">
+        <?php if($row): ?>
+        <div style="width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; color: white;">
+            <div>Subject: <strong><?php echo htmlspecialchars($subname); ?></strong> | Level: <strong><?php echo htmlspecialchars($level); ?></strong></div>
+            <div style="background: rgba(0,0,0,0.3); padding: 0.5rem 1rem; border-radius: 20px; font-family: monospace; font-size: 1.2rem;">
+                Time Left: <span id="time">00:00</span>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <div class="card card-lg">
         <?php
-        
-        if(!isset($_SESSION['qn']))
-        {
-            $_SESSION['qn']=0;
-            pg_query($con, "delete from useranswer where sess_id='".session_id()."'") or die(pg_last_error($con));
-            $_SESSION['true_ans']=0;
-        }
-        else
-        {
-            if($submit=='Next Question' && isset($ans))
-            {
-                $row = pg_fetch_row($result, $_SESSION['qn']);
-                pg_query($con, "insert into useranswer(sess_id,test_id,que_desc,ans1,ans2,ans3,ans4,true_ans,your_ans) values ('".session_id()."',$tid,'$row[2]','$row[3]','$row[4]','$row[5]','$row[6]','$row[7]','$ans')") or die(pg_last_error($con));
-                if($ans==$row[7])
-                {
-                    $_SESSION['true_ans']=$_SESSION['true_ans']+1;
-                }
-                $_SESSION['qn']=$_SESSION['qn']+1;
+        if(!$row) {
+            echo "<div class='text-center'>";
+            echo "<h2>No Questions Found</h2>";
+            echo "<p class='text-muted'>We couldn't find any questions matching <strong>$subname</strong> at <strong>$level</strong> level.</p>";
+            echo "<p style='font-size: 0.8rem; color: #999;'>Try checking your database or add 'debug' to URL for more info.</p>";
+            echo "<br><a href='subject.php' class='btn'>Back to Dashboard</a>";
+            echo "</div>";
+        } else {
+            $n = $_SESSION['qn'] + 1;
+            echo "<div style='margin-bottom: 2rem;'><span class='text-muted'>Question $n of $num_rows</span><h3 style='margin-top: 0.5rem;'>".htmlspecialchars($row['question'])."</h3></div>";
+            
+            echo "<form method='post' action='quiz.php' id='quizForm'>";
+            echo "<div class='form-group'>";
+            $options = [
+                ['id' => 1, 'text' => $row['option_a']],
+                ['id' => 2, 'text' => $row['option_b']],
+                ['id' => 3, 'text' => $row['option_c']],
+                ['id' => 4, 'text' => $row['option_d']]
+            ];
+            // Optional: Shuffle options here if desired
+            foreach($options as $opt) {
+                echo "<label class='subject-card' style='display: block; text-align: left; padding: 1rem; margin-bottom: 1rem; cursor: pointer; border: 2px solid var(--gray-100);'>";
+                echo "<input type='radio' name='ans' value='".$opt['id']."' required style='margin-right: 1rem;'> ".htmlspecialchars($opt['text'])."</label>";
             }
-            else if($submit=='Get Result' && isset($ans))
-            {
-                $row = pg_fetch_row($result, $_SESSION['qn']);
-                pg_query($con, "INSERT INTO useranswer(sess_id,test_id,que_desc,ans1,ans2,ans3,ans4,true_ans,your_ans) values('".session_id()."',$tid,'$row[2]','$row[3]','$row[4]','$row[5]','$row[6]','$row[7]','$ans')") or die(pg_last_error($con));
-                if($ans==$row[7])
-                {
-                    $_SESSION['true_ans']=$_SESSION['true_ans']+1;
-                }
-                echo "<font size=8><p align=center><b>Result</b></p></font>";
-                $_SESSION['qn']=$_SESSION['qn']+1;
-                echo "<table align=center><tr class=tot><td>Total Question</td><td>".$_SESSION['qn']."</td></tr>";
-                echo "<tr class=tot><td>True answer</td><td>".$_SESSION['true_ans']."</td></tr>";
-                $w=$_SESSION['qn'] - $_SESSION['true_ans'];
-                echo "<tr class=tot><td>Wrong answer</td><td>".$w."</td></tr>";
-                echo "</table>";
-                $login = $_SESSION['u_name'] ?? 'guest';
-                pg_query($con, "insert into result(login,test_id,test_date,score) values('$login',$tid,'".date("Y-m-d")."',".$_SESSION['true_ans'].")");
-                echo "<h1 align=center><a href=review.php>Review Question</a></h1>";
-                unset($_SESSION['qn']);
-                exit;
+            echo "</div>";
+            
+            if($_SESSION['qn'] < $num_rows - 1) {
+                echo "<button type='submit' name='submit' value='Next Question' class='btn'>Next Question &rarr;</button>";
+            } else {
+                echo "<button type='submit' name='submit' value='Get Result' class='btn btn-secondary'>Submit Examination</button>";
             }
+            echo "</form>";
         }
-        
-        if($_SESSION['qn'] > pg_num_rows($result)-1)
-        {
-            unset($_SESSION['qn']);
-            echo "<h1>Some Error occurred</h1>";
-            echo "Please <a href=index.php>Start Again</a>";
-            exit;
-        }
-        $row = pg_fetch_row($result, $_SESSION['qn']);
-        echo "<form method=post action=quiz.php>";
-        echo "<table width=100%><tr><td align=center>&nbsp;</td>";
-        $n=$_SESSION['qn']+1;
-        echo "<tr><td align><font size=6>Que ".$n.": ".($row[2] ?? '')."</font></td></tr>";
-        echo "<tr><td align><font size=5><input type=radio name=ans value=1> ".($row[3] ?? '')."</font></td></tr>";
-        echo "<tr><td align><font size=5><input type=radio name=ans value=2> ".($row[4] ?? '')."</font></td></tr>";
-        echo "<tr><td align><font size=5><input type=radio name=ans value=3> ".($row[5] ?? '')."</font></td></tr>";
-        echo "<tr><td align> <font size=5><input type=radio name=ans value=4> ".($row[6] ?? '')."</font></td></tr>";
-        if($_SESSION['qn'] < pg_num_rows($result)-1)
-        {
-            echo "<tr><td align=left><input type=submit name=submit value='Next Question'></td></tr></form>";
-        }
-        else
-        {
-            echo "<tr><td align=left><input type=submit name=submit value='Get Result'></td></tr></form>";
-        }
-        
-        echo "</table>";
         ?>
-    </body>
+        </div>
+    </div>
+</body>
 </html>

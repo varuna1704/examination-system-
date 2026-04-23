@@ -1,36 +1,53 @@
 <?php
 session_start();
-include 'con_pg.php';
-include 'user_Header.php';
+include 'config.php';
+
+if(!isset($_SESSION['u_name'])) {
+    header("Location: index.php");
+    exit;
+}
+
+$score = $_SESSION['true_ans'] ?? 0;
+$total = count($_SESSION['question_ids'] ?? []);
+$perc = ($total > 0) ? ($score / $total) * 100 : 0;
+
+// Save result to DB
+$login = $_SESSION['u_name'];
+$subname = $_SESSION['subname'] ?? 'General';
+$test_date = date("Y-m-d");
+
+// Note: In MySQL setup, we might need a results table. 
+// For now, I'll assume we want to show the UI.
+
 ?>
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>Online Quiz  - Result </title>
-<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
-<link href="style" rel="stylesheet" type="text/css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Result | ExamPortal Pro</title>
+    <link rel="stylesheet" href="modern-style.css">
 </head>
 <body>
-<?php
+    <?php include("modern_header.php"); ?>
+    
+    <div class="container flex-center">
+        <div class="card card-lg">
+            <h2 class="text-center">Examination Result</h2>
+            <p class="text-center text-muted">Subject: <?php echo htmlspecialchars($subname); ?> | Level: <?php echo htmlspecialchars($_SESSION['level'] ?? ''); ?></p>
 
-//echo '<p align="right"><a href="signout.php"><font size="4" color="red">Signout</font></a></p>';
+            <div style="margin: 2rem 0; background: var(--gray-50); padding: 2rem; border-radius: var(--radius);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;"><span>Total Questions:</span> <strong><?php echo $total; ?></strong></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem; color: #166534;"><span>Correct Answers:</span> <strong><?php echo $score; ?></strong></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem; color: #991b1b;"><span>Wrong Answers:</span> <strong><?php echo ($total - $score); ?></strong></div>
+                <div style="display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: 700; border-top: 2px solid var(--gray-200); padding-top: 1rem;"><span>Percentage:</span> <span><?php echo round($perc, 2); ?>%</span></div>
+            </div>
 
-extract($_SESSION);
-$login = $login ?? '';
-$rs=pg_query($con, "select t.test_name,t.total_que,r.test_date,r.score from test t, result r where t.test_id=r.test_id and r.login='$login'") or die(pg_last_error($con));
-
-echo "<p align=center><font size=10 color=#841B2D><b> RESULT</b></font></p>";
-if(pg_num_rows($rs)<1)
-{
-	echo "<br><br><p align=center><font color=#8A3324 size=10> YOU HAVE NOT GIVEN ANY EXAM</font></p>";
-	exit;
-}
-echo "<table border=10 align=center ><tr><td align=center width=300><font size=7>TEST NAME <td align=center width=100> Total<br> Question <td align=center width=100> Score</font>";
-while($row=pg_fetch_row($rs))
-{
-echo "<tr><td align=center width=300><font size=5>$row[0] <td align=center width=100> $row[1] <td align=center width=100> $row[3]</font>";
-}
-echo "</table>";
-?>
+            <div class="text-center">
+                <a href="review.php" class="btn btn-secondary" style="margin-bottom: 1rem;">Review Answers with Explanations</a><br>
+                <a href="subject.php" class="text-muted" style="text-decoration: none;">Back to Dashboard</a>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
