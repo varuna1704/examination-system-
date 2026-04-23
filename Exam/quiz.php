@@ -5,8 +5,10 @@ ini_set('display_errors', 1);
 
 include 'config.php'; // MySQL connection
 include 'QuestionGenerator.php'; // Advanced Question Generator
+include 'HybridQuestionManager.php'; // Hybrid System (DB, Generator, API)
 
 $generator = new QuestionGenerator($conn);
+$hybridManager = new HybridQuestionManager($conn, $generator);
 
 // Create questions table if not exists (Smart System Behavior)
 $conn->query("CREATE TABLE IF NOT EXISTS questions (
@@ -64,15 +66,15 @@ if(isset($_GET['subname']) && isset($_GET['level']))
 $subname = $_SESSION['subname'] ?? '';
 $level = $_SESSION['level'] ?? '';
 
-// 1.5 Smart Auto-Generation (Simulation of real-world platform scaling)
+// 1.5 Smart Auto-Generation (Hybrid System)
 if(!empty($subname) && !empty($level)) {
-    $generator->ensurePool($subname, $level, 5); // Ensure at least 5 questions exist
+    $hybridManager->ensureQuestions($subname, $level);
 }
 
-// 2. Fetch Questions (Randomized)
+// 2. Fetch Questions (Randomized, Max 25 per quiz)
 if(!isset($_SESSION['question_ids']) && !empty($subname)) {
     // USE PREPARED STATEMENTS & LOWER() for case-insensitive matching
-    $stmt = $conn->prepare("SELECT id FROM questions WHERE LOWER(subject) = LOWER(?) AND LOWER(level) = LOWER(?) ORDER BY RAND()");
+    $stmt = $conn->prepare("SELECT id FROM questions WHERE LOWER(subject) = LOWER(?) AND LOWER(level) = LOWER(?) ORDER BY RAND() LIMIT 25");
     $stmt->bind_param("ss", $subname, $level);
     $stmt->execute();
     $res = $stmt->get_result();
