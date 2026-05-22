@@ -25,12 +25,11 @@ if(!isset($_SESSION['u_name'])) {
 
         <div class="subject-grid">
             <?php
-            // Ensure subject table exists in MySQL and has data
-            $conn->query("CREATE TABLE IF NOT EXISTS subject (sub_id INT AUTO_INCREMENT PRIMARY KEY, sub_name VARCHAR(100))");
-            $check = $conn->query("SELECT * FROM subject");
+            // Ensure canonical subjects table has baseline data
+            $check = $conn->query("SELECT * FROM subjects");
             if($check->num_rows == 0) {
-                $conn->query("INSERT INTO subject (sub_name) VALUES ('Java Programming Language'), ('PHP Programming Language'), ('Python Programming Language'), ('C Language'), ('Data Structure')");
-                $check = $conn->query("SELECT * FROM subject");
+                $conn->query("INSERT INTO subjects (name) VALUES ('Java Programming Language'), ('PHP Programming Language'), ('Python Programming Language'), ('C Language'), ('Data Structure')");
+                $check = $conn->query("SELECT * FROM subjects");
             }
 
             $icons = [
@@ -43,8 +42,8 @@ if(!isset($_SESSION['u_name'])) {
             ];
 
             while($row = $check->fetch_assoc()) {
-                $subject_name = $row['sub_name'];
-                $sub_id = $row['sub_id'];
+                $subject_name = $row['name'];
+                $sub_id = $row['id'];
                 $icon = '📚';
                 foreach($icons as $key => $val) {
                     if(strpos($subject_name, $key) !== false) {
@@ -53,7 +52,7 @@ if(!isset($_SESSION['u_name'])) {
                     }
                 }
                 echo "
-                <a href='levels.php?subid=$sub_id&testid=$sub_id&subname=".urlencode($subject_name)."' class='subject-card'>
+                <a href='levels.php?subid=$sub_id&subject_id=$sub_id&subname=".urlencode($subject_name)."' class='subject-card'>
                     <span class='subject-icon'>$icon</span>
                     <span class='subject-title'>$subject_name</span>
                     <p class='text-muted' style='margin-top: 1rem;'>Start Examination &rarr;</p>

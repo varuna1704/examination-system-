@@ -18,16 +18,17 @@ class HybridQuestionManager {
      */
     public function ensureQuestions($subject, $level) {
         $required_count = (strtolower($level) === 'expert') ? 10 : 25;
+        $subjectId = $this->generator->getSubjectId($subject);
 
         // Step 1: Check Database
-        $current_count = $this->getDbCount($subject, $level);
+        $current_count = $this->getDbCount($subjectId, $level);
         if ($current_count >= $required_count) {
             return; // Smart Caching: Sufficient questions exist
         }
 
         // Step 2: Use Internal Question Generator
         $this->generator->ensurePool($subject, $level, $required_count);
-        $current_count = $this->getDbCount($subject, $level);
+        $current_count = $this->getDbCount($subjectId, $level);
         if ($current_count >= $required_count) {
             return;
         }
@@ -35,21 +36,21 @@ class HybridQuestionManager {
         // Step 3: Fetch from External API (Open Trivia DB)
         $deficit = $required_count - $current_count;
         if ($deficit > 0) {
-            $this->fetchFromApi($subject, $level, $deficit);
+            $this->fetchFromApi($subjectId, $subject, $level, $deficit);
         }
     }
 
-    private function getDbCount($subject, $level) {
-        $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM questions WHERE LOWER(subject) = LOWER(?) AND LOWER(level) = LOWER(?)");
-        $stmt->bind_param("ss", $subject, $level);
+    private function getDbCount($subjectId, $level) {
+        $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM questions WHERE subject_id = ? AND level = ?");
+        $stmt->bind_param("is", $subjectId, $level);
         $stmt->execute();
-        return $stmt->get_result()->fetch_assoc()['count'];
+        return (int)$stmt->get_result()->fetch_assoc()['count'];
     }
 
     /**
      * Fetches questions from Open Trivia DB and inserts them into the local database.
      */
-    private function fetchFromApi($subject, $level, $amount) {
+    private function fetchFromApi($subjectId, $subjectName, $level, $amount) {
         // Open Trivia DB only allows max 50 per request
         $amount = min($amount, 50);
 
@@ -92,8 +93,8 @@ class HybridQuestionManager {
             $question_text = html_entity_decode($item['question'], ENT_QUOTES);
             
             // Avoid duplicates
-            $check = $this->db->prepare("SELECT id FROM questions WHERE question = ?");
-            $check->bind_param("s", $question_text);
+            $check = $this->db->prepare("SELECT id FROM questions WHERE subject_id = ? AND question = ?");
+            $check->bind_param("is", $subjectId, $question_text);
             $check->execute();
             if ($check->get_result()->num_rows > 0) {
                 continue;
@@ -108,7 +109,7 @@ class HybridQuestionManager {
                 return html_entity_decode($opt, ENT_QUOTES);
             }, $options);
 
-            // Shuffle options
+            // Shuffling options
             shuffle($options);
 
             // Find correct answer index
@@ -117,9 +118,9 @@ class HybridQuestionManager {
 
             $explanation = "Source: Open Trivia DB. Correct answer is " . html_entity_decode($item['correct_answer'], ENT_QUOTES) . ".";
 
-            $stmt = $this->db->prepare("INSERT INTO questions (subject, level, question, option_a, option_b, option_c, option_d, correct_answer, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssssssss", 
-                $subject, 
+            $stmt = $this->db->prepare("INSERT INTO questions (subject_id, level, type, question, option_a, option_b, option_c, option_d, correct_answer, explanation) VALUES (?, ?, 'MCQ', ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("issssssss", 
+                $subjectId, 
                 $level, 
                 $question_text, 
                 $options[0], 

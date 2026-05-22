@@ -1,32 +1,74 @@
 <?php
-require('config.php');
-session_start();
-if(isset($_REQUEST['f_name']))
-{
-    $f_name = $_REQUEST['f_name'];
-    $m_name = $_REQUEST['m_name'];
-    $l_name = $_REQUEST['l_name'];
-    $u_name = $_REQUEST['u_name'];
-    $u_email = $_REQUEST['u_email'];
-    $u_pass = $_REQUEST['u_pass'];
-    $u_age = $_REQUEST['u_age'];
-    $u_mob = $_REQUEST['u_mob'];
-    $u_adr = $_REQUEST['u_adr'];
+require 'config.php';
+require_once 'lib/security.php';
 
-    // Ensure users table exists with all fields
-    $conn->query("CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        f_name VARCHAR(100), m_name VARCHAR(100), l_name VARCHAR(100),
-        u_name VARCHAR(100), u_email VARCHAR(100), u_pass VARCHAR(100),
-        u_age INT, u_mob VARCHAR(20), u_adr TEXT
-    )");
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_validate($_POST['csrf_token'] ?? null)) {
+        $error_msg = "Security validation failed. Please try again.";
+    } else {
+        $f_name = trim($_POST['f_name'] ?? '');
+        $m_name = trim($_POST['m_name'] ?? '');
+        $l_name = trim($_POST['l_name'] ?? '');
+        $u_name = trim($_POST['u_name'] ?? '');
+        $u_email = trim($_POST['u_email'] ?? '');
+        $u_pass = $_POST['u_pass'] ?? '';
+        $u_age = (int)($_POST['u_age'] ?? 0);
+        $u_mob = trim($_POST['u_mob'] ?? '');
+        $u_adr = trim($_POST['u_adr'] ?? '');
 
-    $stmt = $conn->prepare("INSERT INTO users (f_name, m_name, l_name, u_name, u_email, u_pass, u_age, u_mob, u_adr) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssssssiss", $f_name, $m_name, $l_name, $u_name, $u_email, $u_pass, $u_age, $u_mob, $u_adr);
-    
-    if($stmt->execute())
-    {
-        $success_msg = "You are registered successfully!";
+        // Ensure users table exists, then align legacy schemas safely
+        $conn->query("CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            f_name VARCHAR(100),
+            m_name VARCHAR(100),
+            l_name VARCHAR(100),
+            u_name VARCHAR(100) UNIQUE,
+            u_email VARCHAR(100) UNIQUE,
+            u_pass VARCHAR(255),
+            u_age INT,
+            u_mob VARCHAR(20),
+            u_adr TEXT,
+            role ENUM('admin', 'teacher', 'student') DEFAULT 'student',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS f_name VARCHAR(100)");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS m_name VARCHAR(100)");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS l_name VARCHAR(100)");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS u_email VARCHAR(100)");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS u_age INT");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS u_mob VARCHAR(20)");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS u_adr TEXT");
+        $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role ENUM('admin', 'teacher', 'student') DEFAULT 'student'");
+        $conn->query("ALTER TABLE users MODIFY COLUMN u_pass VARCHAR(255)");
+
+        $checkStmt = $conn->prepare("SELECT id FROM users WHERE u_name = ? OR u_email = ? LIMIT 1");
+        if (!$checkStmt) {
+            $error_msg = "Registration setup failed. Please retry.";
+        } else {
+            $checkStmt->bind_param("ss", $u_name, $u_email);
+            $checkStmt->execute();
+            $existing = $checkStmt->get_result();
+
+            if ($existing && $existing->num_rows > 0) {
+                $error_msg = "Username or email is already registered. Please use different credentials.";
+            } else {
+                $hashedPassword = password_hash($u_pass, PASSWORD_DEFAULT);
+                $defaultRole = 'student';
+
+                $stmt = $conn->prepare("INSERT INTO users (f_name, m_name, l_name, u_name, u_email, u_pass, u_age, u_mob, u_adr, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                if (!$stmt) {
+                    $error_msg = "Registration failed. Please retry in a moment.";
+                } else {
+                    $stmt->bind_param("ssssssisss", $f_name, $m_name, $l_name, $u_name, $u_email, $hashedPassword, $u_age, $u_mob, $u_adr, $defaultRole);
+
+                    if ($stmt->execute()) {
+                        $success_msg = "You are registered successfully!";
+                    } else {
+                        $error_msg = "Registration failed. Please try again.";
+                    }
+                }
+            }
+        }
     }
 }
 ?>
@@ -52,7 +94,13 @@ if(isset($_REQUEST['f_name']))
                     <p>You can now <a href="index.php" style="font-weight: 700; color: #166534; text-decoration: underline;">Login to your account</a></p>
                 </div>
             <?php else: ?>
+                <?php if(isset($error_msg)): ?>
+                    <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: center; font-size: 0.9rem;">
+                        <?php echo e($error_msg); ?>
+                    </div>
+                <?php endif; ?>
                 <form name="registration" action="" method="post">
+                    <input type="hidden" name="csrf_token" value="<?php echo e(csrf_token()); ?>">
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">First Name</label>

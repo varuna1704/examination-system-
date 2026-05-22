@@ -6,11 +6,11 @@ if(!isset($_SESSION['u_name'])) {
     exit;
 }
 
-$subid = $_GET['subid'] ?? 0;
+$subid = $_GET['subid'] ?? ($_GET['subject_id'] ?? 0);
 $testid = $_GET['testid'] ?? 0;
 
-// Fetch subject name using MySQL
-$stmt = $conn->prepare("SELECT sub_name FROM subject WHERE sub_id = ?");
+// Fetch subject name using canonical subjects table
+$stmt = $conn->prepare("SELECT name FROM subjects WHERE id = ?");
 $stmt->bind_param("i", $subid);
 $stmt->execute();
 $sub_res = $stmt->get_result();
@@ -70,7 +70,7 @@ $levels = [
 
         <div class="level-grid">
             <?php foreach($levels as $l): ?>
-                <a href="quiz.php?subname=<?php echo urlencode($_GET['subname'] ?? $sub_name); ?>&level=<?php echo $l['name']; ?>" 
+                <a href="quiz.php?subject_id=<?php echo (int)$subid; ?>&subname=<?php echo urlencode($_GET['subname'] ?? $sub_name); ?>&level=<?php echo $l['name']; ?>" 
                    class="level-card" style="border-top-color: <?php echo $l['color']; ?>">
                     <span class="level-icon"><?php echo $l['icon']; ?></span>
                     <span class="level-name" style="color: <?php echo $l['color']; ?>"><?php echo $l['name']; ?></span>

@@ -1,14 +1,34 @@
 <?php
-session_start();
-include 'config.php';
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/security.php';
+require_login();
 
-if(!isset($_SESSION['u_name']) || !isset($_SESSION['question_ids'])) {
-    header("Location: index.php");
-    exit;
+$attemptId = (int)($_GET['attempt_id'] ?? ($_SESSION['last_attempt_id'] ?? 0));
+if ($attemptId <= 0) {
+    http_response_code(400);
+    exit('Invalid attempt.');
 }
 
-$ids = $_SESSION['question_ids'];
-$responses = $_SESSION['user_responses'] ?? [];
+$ownershipStmt = $conn->prepare("SELECT id FROM exam_attempts WHERE id = ? AND user_id = ?");
+$ownershipStmt->bind_param("ii", $attemptId, $_SESSION['user_id']);
+$ownershipStmt->execute();
+$ownershipRes = $ownershipStmt->get_result();
+if (!$ownershipRes || $ownershipRes->num_rows === 0) {
+    http_response_code(403);
+    exit('You do not have access to this attempt.');
+}
+
+$ids = [];
+$responses = [];
+$answersStmt = $conn->prepare("SELECT question_id, selected_answer FROM attempt_answers WHERE attempt_id = ? ORDER BY id ASC");
+$answersStmt->bind_param("i", $attemptId);
+$answersStmt->execute();
+$answersRes = $answersStmt->get_result();
+while ($answerRow = $answersRes->fetch_assoc()) {
+    $qid = (int)$answerRow['question_id'];
+    $ids[] = $qid;
+    $responses[$qid] = is_null($answerRow['selected_answer']) ? null : (int)$answerRow['selected_answer'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

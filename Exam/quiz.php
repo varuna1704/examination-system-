@@ -38,16 +38,21 @@ if(isset($_GET['debug'])) {
 }
 
 // 1. Handle Level Selection Entry
-if(isset($_GET['subname']) && isset($_GET['level']))
+if(isset($_GET['level']) && (isset($_GET['subject_id']) || isset($_GET['subname'])))
 {
-    // Fix subject name mismatch (e.g. "Java Programming Language" -> "Java")
-    $subname = $_GET['subname'];
-    if(stripos($subname, 'Java') !== false) $subname = 'Java';
-    if(stripos($subname, 'Python') !== false) $subname = 'Python';
-    if(stripos($subname, 'PHP') !== false) $subname = 'PHP';
-    if(stripos($subname, 'C Language') !== false) $subname = 'C';
-    if(stripos($subname, 'Data Structure') !== false) $subname = 'DS';
+    $subject_id = (int)($_GET['subject_id'] ?? 0);
+    $subname = $_GET['subname'] ?? '';
+    if ($subject_id > 0) {
+        $subjectStmt = $conn->prepare("SELECT name FROM subjects WHERE id = ? LIMIT 1");
+        $subjectStmt->bind_param("i", $subject_id);
+        $subjectStmt->execute();
+        $subjectRow = $subjectStmt->get_result()->fetch_assoc();
+        if ($subjectRow) {
+            $subname = $subjectRow['name'];
+        }
+    }
 
+    $_SESSION['subject_id'] = $subject_id;
     $_SESSION['subname'] = $subname;
     $_SESSION['level'] = $_GET['level'];
     
@@ -58,24 +63,32 @@ if(isset($_GET['subname']) && isset($_GET['level']))
     // Reset Quiz State
     unset($_SESSION['question_ids']);
     unset($_SESSION['qn']);
+    unset($_SESSION['attempt_saved']);
+    unset($_SESSION['last_attempt_id']);
+    $_SESSION['attempt_started_at'] = date("Y-m-d H:i:s");
     
     header("Location: quiz.php");
     exit;
 }
 
+$subject_id = (int)($_SESSION['subject_id'] ?? 0);
 $subname = $_SESSION['subname'] ?? '';
 $level = $_SESSION['level'] ?? '';
 
 // 1.5 Smart Auto-Generation (Hybrid System)
 if(!empty($subname) && !empty($level)) {
     $hybridManager->ensureQuestions($subname, $level);
+    if ($subject_id <= 0) {
+        $subject_id = $generator->getSubjectId($subname);
+        $_SESSION['subject_id'] = $subject_id;
+    }
 }
 
 // 2. Fetch Questions (Randomized, Max 25 per quiz)
-if(!isset($_SESSION['question_ids']) && !empty($subname)) {
-    // USE PREPARED STATEMENTS & LOWER() for case-insensitive matching
-    $stmt = $conn->prepare("SELECT id FROM questions WHERE LOWER(subject) = LOWER(?) AND LOWER(level) = LOWER(?) ORDER BY RAND() LIMIT 25");
-    $stmt->bind_param("ss", $subname, $level);
+if(!isset($_SESSION['question_ids']) && $subject_id > 0) {
+    // Canonical schema: fetch by subject_id + level
+    $stmt = $conn->prepare("SELECT id FROM questions WHERE subject_id = ? AND level = ? ORDER BY RAND() LIMIT 25");
+    $stmt->bind_param("is", $subject_id, $level);
     $stmt->execute();
     $res = $stmt->get_result();
     

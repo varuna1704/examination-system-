@@ -96,23 +96,27 @@ Follow these steps to set up the project locally using **XAMPP**:
 
 ## 🗄️ Database Structure
 
-The system relies on a well-normalized database schema:
+The system relies on a clean, fully-normalized canonical database schema:
 
-- **`users`**: Stores user credentials and profile information.
-- **`questions`**: The core table containing:
-  - `subject`: Categorization (Java, Python, PHP, etc.)
-  - `level`: Difficulty (Easy to Expert)
+- **`users`**: Stores user credentials, roles, and profile information.
+- **`subjects`**: Subject catalog (Java Programming Language, Python, PHP, C, Data Structures).
+- **`questions`**: Core questions table containing:
+  - `subject_id`: Foreign key referencing the subjects table.
+  - `level`: Difficulty (Easy, Medium, Hard, Advanced, Expert)
+  - `type`: Question format (e.g. MCQ)
   - `question`: The text of the question
   - `options (A-D)`: Multiple choice answers
-  - `correct_answer`: The logic key
-  - `explanation`: Detailed text for the review page.
-- **`results`**: Logs user performance history and dates.
+  - `correct_answer`: The logic key ('A', 'B', 'C', or 'D')
+  - `explanation`: Detailed explanation shown to students post-exam.
+- **`exam_attempts`**: Logs user exam attempts, starting time, submission time, score, and overall percentage.
+- **`attempt_answers`**: Stores the exact option chosen by the user for each question in an attempt, checking if it was correct.
 
 ---
 
 ## 📈 Future Roadmap
 
-- [ ] **AI Question Generator**: Integrate OpenAI/Gemini API to generate dynamic questions.
+- [x] **Dynamic Question Generation**: Intelligently generate dynamic questions matching LeetCode and HackerRank styles.
+- [x] **Hybrid Question Management System**: Prioritized question fetching combining local DB caching, internal programmatic generator templates, and external API requests (Open Trivia DB).
 - [ ] **Anti-Cheating Module**: Browser lock and tab-switching detection.
 - [ ] **Admin Command Center**: Complete dashboard for educators to manage questions and track student progress.
 - [ ] **Leaderboards**: Competitive ranking system for global or subject-specific top performers.
