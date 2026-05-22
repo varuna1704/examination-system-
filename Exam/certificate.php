@@ -449,6 +449,7 @@ $certVerificationCode = 'CERT-EPP-' . $attemptId . '-' . strtoupper(substr(md5($
                     <div class="cert-meta-item">
                         <span class="cert-val" style="font-family: 'Alex Brush', cursive; font-size: 1.8rem; line-height: 0.8; font-weight: normal; color: #1e3a8a;">Varuna Nikam</span>
                         <div class="cert-line" style="border-top-style: solid;"></div>
+                        <span class="cert-val" style="font-size: 0.9rem; font-weight: 700; color: var(--slate-800); margin-bottom: 0.1rem;">Varuna Nikam</span>
                         <span class="cert-label">Certification Director</span>
                     </div>
 
