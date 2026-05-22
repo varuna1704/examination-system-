@@ -70,16 +70,24 @@ $levels = [
 
         <div class="level-grid">
             <?php foreach($levels as $l): ?>
-                <a href="quiz.php?subject_id=<?php echo (int)$subid; ?>&subname=<?php echo urlencode($_GET['subname'] ?? $sub_name); ?>&level=<?php echo $l['name']; ?>" 
-                   class="level-card" style="border-top-color: <?php echo $l['color']; ?>">
+                <div class="level-card" style="border-top-color: <?php echo $l['color']; ?>">
                     <span class="level-icon"><?php echo $l['icon']; ?></span>
                     <span class="level-name" style="color: <?php echo $l['color']; ?>"><?php echo $l['name']; ?></span>
-                    <div class="level-stats">
+                    <div class="level-stats" style="margin-bottom: 1rem;">
                         <p><?php echo $l['questions']; ?> Questions</p>
                         <p><?php echo $l['marks']; ?> Total Marks</p>
                     </div>
-                    <div style="margin-top: 1rem; font-weight: 600; color: <?php echo $l['color']; ?>">Start &rarr;</div>
-                </a>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <a href="quiz.php?subject_id=<?php echo (int)$subid; ?>&subname=<?php echo urlencode($_GET['subname'] ?? $sub_name); ?>&level=<?php echo $l['name']; ?>&mode=official" 
+                           class="btn" style="background: <?php echo $l['color']; ?>; color: white; display: block; text-decoration: none; font-size: 0.9rem; padding: 0.6rem 1rem; border: none; font-weight: 600;">
+                           Official Exam
+                        </a>
+                        <a href="quiz.php?subject_id=<?php echo (int)$subid; ?>&subname=<?php echo urlencode($_GET['subname'] ?? $sub_name); ?>&level=<?php echo $l['name']; ?>&mode=mock" 
+                           class="btn btn-secondary" style="display: block; text-decoration: none; font-size: 0.9rem; padding: 0.6rem 1rem; border: 1px solid var(--gray-300); background: transparent; color: var(--gray-700); font-weight: 500;">
+                           Mock Practice
+                        </a>
+                    </div>
+                </div>
             <?php endforeach; ?>
         </div>
     </div>

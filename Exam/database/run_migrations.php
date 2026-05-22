@@ -93,6 +93,13 @@ $conn->query("CREATE TABLE IF NOT EXISTS exam_attempts (
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
 )");
 
+// Check and add exam_mode column if not exists
+$modeCheck = $conn->query("SHOW COLUMNS FROM exam_attempts LIKE 'exam_mode'");
+if ($modeCheck->num_rows == 0) {
+    echo "Adding exam_mode column to exam_attempts table...\n";
+    $conn->query("ALTER TABLE exam_attempts ADD COLUMN exam_mode ENUM('official','mock') NOT NULL DEFAULT 'official'");
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS attempt_answers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   attempt_id INT NOT NULL,

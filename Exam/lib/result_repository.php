@@ -1,5 +1,5 @@
 <?php
-function save_attempt(mysqli $conn, int $userId, int $subjectId, string $level, int $total, int $score, string $startedAt, array $responses): ?int
+function save_attempt(mysqli $conn, int $userId, int $subjectId, string $level, int $total, int $score, string $startedAt, array $responses, string $examMode = 'official'): ?int
 {
     $percentage = $total > 0 ? round(($score / $total) * 100, 2) : 0.00;
     $submittedAt = date('Y-m-d H:i:s');
@@ -8,10 +8,10 @@ function save_attempt(mysqli $conn, int $userId, int $subjectId, string $level, 
 
     try {
         $attemptStmt = $conn->prepare(
-            "INSERT INTO exam_attempts (user_id, subject_id, level, total_questions, score, percentage, started_at, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO exam_attempts (user_id, subject_id, level, total_questions, score, percentage, started_at, submitted_at, exam_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $attemptStmt->bind_param(
-            "iisiiiss",
+            "iisiiisss",
             $userId,
             $subjectId,
             $level,
@@ -19,7 +19,8 @@ function save_attempt(mysqli $conn, int $userId, int $subjectId, string $level, 
             $score,
             $percentage,
             $startedAt,
-            $submittedAt
+            $submittedAt,
+            $examMode
         );
         $attemptStmt->execute();
 
