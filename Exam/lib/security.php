@@ -33,4 +33,13 @@ function require_login(): void
         exit;
     }
 }
+
+function require_admin(): void
+{
+    require_login();
+    if (empty($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+        header('Location: subject.php');
+        exit;
+    }
+}
 ?>

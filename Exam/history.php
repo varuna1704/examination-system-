@@ -15,6 +15,31 @@ $stmt = $conn->prepare("
 $stmt->bind_param("i", $userId);
 $stmt->execute();
 $attempts = $stmt->get_result();
+
+// Aggregate stats for the currently logged-in user
+// 1. Total Attempts
+$stmt_total = $conn->prepare("SELECT COUNT(*) AS total FROM exam_attempts WHERE user_id = ?");
+$stmt_total->bind_param("i", $userId);
+$stmt_total->execute();
+$total_attempts = $stmt_total->get_result()->fetch_assoc()['total'] ?? 0;
+
+// 2. Certifications Earned (Passed official exams)
+$stmt_certs = $conn->prepare("SELECT COUNT(*) AS certs FROM exam_attempts WHERE user_id = ? AND exam_mode = 'official' AND percentage >= 50.00");
+$stmt_certs->bind_param("i", $userId);
+$stmt_certs->execute();
+$certs_earned = $stmt_certs->get_result()->fetch_assoc()['certs'] ?? 0;
+
+// 3. Maximum Percentage (High Score)
+$stmt_max = $conn->prepare("SELECT MAX(percentage) AS max_perc FROM exam_attempts WHERE user_id = ?");
+$stmt_max->bind_param("i", $userId);
+$stmt_max->execute();
+$max_percentage = $stmt_max->get_result()->fetch_assoc()['max_perc'] ?? 0.00;
+
+// 4. Average Percentage
+$stmt_avg = $conn->prepare("SELECT AVG(percentage) AS avg_perc FROM exam_attempts WHERE user_id = ?");
+$stmt_avg->bind_param("i", $userId);
+$stmt_avg->execute();
+$avg_percentage = $stmt_avg->get_result()->fetch_assoc()['avg_perc'] ?? 0.00;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -29,7 +54,7 @@ $attempts = $stmt->get_result();
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             overflow-x: auto;
-            margin-top: 2rem;
+            margin-top: 1rem;
             border: 1px solid var(--gray-200);
         }
         .history-table {
@@ -101,6 +126,71 @@ $attempts = $stmt->get_result();
         .action-link.cert {
             color: #d97706;
         }
+
+        /* Performance Analytics Dashboard Grid */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .analytics-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--gray-200);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .analytics-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
+        }
+        .analytics-icon-wrapper {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .analytics-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .analytics-label {
+            font-size: 0.72rem;
+            color: var(--gray-600);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .analytics-val {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--gray-900);
+            line-height: 1.2;
+            margin-top: 0.2rem;
+        }
+        .accent-blue { border-left: 5px solid #3b82f6; }
+        .accent-blue .analytics-icon-wrapper { background: #eff6ff; color: #3b82f6; }
+
+        .accent-gold { border-left: 5px solid #eab308; }
+        .accent-gold .analytics-icon-wrapper { background: #fef9c3; color: #ca8a04; }
+
+        .accent-rose { border-left: 5px solid #f43f5e; }
+        .accent-rose .analytics-icon-wrapper { background: #fff1f2; color: #f43f5e; }
+
+        .accent-emerald { border-left: 5px solid #10b981; }
+        .accent-emerald .analytics-icon-wrapper { background: #ecfdf5; color: #10b981; }
     </style>
 </head>
 <body>
@@ -109,13 +199,49 @@ $attempts = $stmt->get_result();
     <div class="container" style="max-width: 1200px;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 2rem;">
             <div>
-                <h1>Exam History & Certificates</h1>
-                <p class="text-muted">Review all your previous attempts, performance stats, and print earned certifications.</p>
+                <h1 style="color: white; margin-bottom: 0.25rem;">Exam History & Certificates</h1>
+                <p style="color: rgba(255,255,255,0.7); font-size: 0.95rem;">Review all your previous attempts, performance stats, and print earned certifications.</p>
             </div>
-            <a href="subject.php" class="btn">&larr; Back to Dashboard</a>
+            <a href="subject.php" class="btn" style="width: auto;">&larr; Back to Dashboard</a>
+        </div>
+
+        <!-- Performance Analytics & Visual Summary -->
+        <div class="analytics-grid">
+            <div class="analytics-card accent-blue">
+                <div class="analytics-icon-wrapper">📝</div>
+                <div class="analytics-info">
+                    <span class="analytics-label">Total Attempts</span>
+                    <span class="analytics-val"><?php echo $total_attempts; ?></span>
+                </div>
+            </div>
+            
+            <div class="analytics-card accent-gold">
+                <div class="analytics-icon-wrapper">🏆</div>
+                <div class="analytics-info">
+                    <span class="analytics-label">Certifications</span>
+                    <span class="analytics-val"><?php echo $certs_earned; ?></span>
+                </div>
+            </div>
+            
+            <div class="analytics-card accent-rose">
+                <div class="analytics-icon-wrapper">🔥</div>
+                <div class="analytics-info">
+                    <span class="analytics-label">Personal Best</span>
+                    <span class="analytics-val"><?php echo round($max_percentage, 1); ?>%</span>
+                </div>
+            </div>
+            
+            <div class="analytics-card accent-emerald">
+                <div class="analytics-icon-wrapper">📊</div>
+                <div class="analytics-info">
+                    <span class="analytics-label">Avg. Accuracy</span>
+                    <span class="analytics-val"><?php echo round($avg_percentage, 1); ?>%</span>
+                </div>
+            </div>
         </div>
 
         <?php if ($attempts->num_rows == 0): ?>
+
             <div class="card text-center" style="padding: 4rem 2rem;">
                 <span style="font-size: 4rem; display: block; margin-bottom: 1rem;">📝</span>
                 <h2>No Attempts Found</h2>

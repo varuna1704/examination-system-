@@ -65,6 +65,7 @@ if(isset($_GET['level']) && (isset($_GET['subject_id']) || isset($_GET['subname'
     unset($_SESSION['question_ids']);
     unset($_SESSION['qn']);
     unset($_SESSION['attempt_saved']);
+    unset($_SESSION['final_attempt_saved']);
     unset($_SESSION['last_attempt_id']);
     unset($_SESSION['error_message']);
     $_SESSION['attempt_started_at'] = date("Y-m-d H:i:s");
@@ -106,6 +107,24 @@ if(!isset($_SESSION['question_ids']) && $subject_id > 0) {
 
 $ids = $_SESSION['question_ids'] ?? [];
 $num_rows = count($ids);
+
+// Active Proctor session placeholder record initialization
+$userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+if ($userId > 0 && $subject_id > 0 && $num_rows > 0 && !isset($_SESSION['last_attempt_id'])) {
+    $verification_key = "CERT-EPP-" . uniqid() . "-" . substr(md5($userId . time()), 0, 8);
+    $startedAt = $_SESSION['attempt_started_at'] ?? date("Y-m-d H:i:s");
+    $initStmt = $conn->prepare("
+        INSERT INTO exam_attempts (verification_key, user_id, subject_id, level, total_questions, score, percentage, started_at, submitted_at, exam_mode, proctor_status, proctor_paused, time_remaining_sec)
+        VALUES (?, ?, ?, ?, ?, 0, 0.00, ?, ?, ?, 'monitoring', 0, 3600)
+    ");
+    if ($initStmt) {
+        $dummy_sub = $startedAt; // temporary submitted_at to respect NOT NULL constraint
+        $initStmt->bind_param("siisissss", $verification_key, $userId, $subject_id, $level, $num_rows, $startedAt, $dummy_sub, $exam_mode);
+        $initStmt->execute();
+        $_SESSION['last_attempt_id'] = $conn->insert_id;
+        $_SESSION['attempt_saved'] = true;
+    }
+}
 
 // 3. Process Answer & Navigation Submission
 $auto_submit = $_POST['auto_submit'] ?? '0';
@@ -223,26 +242,141 @@ if($num_rows > 0 && $_SESSION['qn'] < $num_rows) {
     <title>Quiz | ExamPortal Pro</title>
     <link rel="stylesheet" href="modern-style.css">
     <script>
+        var isPaused = false;
+        var timerInterval = null;
+        var timerRemaining = 0;
+
         function startTimer(duration, display) {
-            var timer = duration, minutes, seconds;
-            var interval = setInterval(function () {
-                minutes = parseInt(timer / 60, 10);
-                seconds = parseInt(timer % 60, 10);
+            timerRemaining = duration;
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(function () {
+                if (isPaused) return;
+
+                var minutes = parseInt(timerRemaining / 60, 10);
+                var seconds = parseInt(timerRemaining % 60, 10);
                 minutes = minutes < 10 ? "0" + minutes : minutes;
                 seconds = seconds < 10 ? "0" + seconds : seconds;
                 display.textContent = minutes + ":" + seconds;
-                if (--timer < 0) {
-                    clearInterval(interval);
+
+                if (--timerRemaining < 0) {
+                    clearInterval(timerInterval);
                     alert("Time is up! Your exam will be submitted automatically.");
                     document.getElementById('auto_submit').value = "1";
                     document.getElementById('quizForm').submit();
                 }
             }, 1000);
         }
-        
-        <?php if ($exam_mode === 'official'): ?>
+
+        function syncResponse(questionId, selectedValue) {
+            var attemptId = <?php echo (int)($_SESSION['last_attempt_id'] ?? 0); ?>;
+            if (!attemptId) return;
+
+            var localKey = 'quiz_attempt_' + attemptId + '_responses';
+            var responses = JSON.parse(localStorage.getItem(localKey) || '{}');
+            responses[questionId] = selectedValue;
+            localStorage.setItem(localKey, JSON.stringify(responses));
+
+            if (navigator.onLine) {
+                var formData = new FormData();
+                formData.append('attempt_id', attemptId);
+                formData.append('question_id', questionId);
+                formData.append('selected', selectedValue);
+
+                fetch('sync_answer.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Real-time answer sync:', data);
+                })
+                .catch(err => {
+                    console.error('Failed to sync answer:', err);
+                });
+            }
+        }
+
+        function syncOfflineAnswers() {
+            var attemptId = <?php echo (int)($_SESSION['last_attempt_id'] ?? 0); ?>;
+            if (!attemptId) return;
+
+            var localKey = 'quiz_attempt_' + attemptId + '_responses';
+            var responses = JSON.parse(localStorage.getItem(localKey) || '{}');
+
+            Object.keys(responses).forEach(function(questionId) {
+                var selectedValue = responses[questionId];
+                var formData = new FormData();
+                formData.append('attempt_id', attemptId);
+                formData.append('question_id', questionId);
+                formData.append('selected', selectedValue);
+
+                fetch('sync_answer.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Synced offline answer for Q' + questionId, data);
+                })
+                .catch(err => {
+                    console.error('Offline sync failed for Q' + questionId, err);
+                });
+            });
+        }
+
+        window.addEventListener('offline', function() {
+            var banner = document.getElementById('offline-warning-banner');
+            if (banner) banner.style.display = 'flex';
+        });
+
+        window.addEventListener('online', function() {
+            var banner = document.getElementById('offline-warning-banner');
+            if (banner) banner.style.display = 'none';
+            syncOfflineAnswers();
+        });
+
         var focusWarnings = 0;
         var maxWarnings = 3;
+        var currentWarningStatus = 'monitoring';
+
+        function checkProctorState() {
+            var attemptId = <?php echo (int)($_SESSION['last_attempt_id'] ?? 0); ?>;
+            if (!attemptId) return;
+
+            fetch('proctor_check.php?attempt_id=' + attemptId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    if (data.proctor_status === 'suspended') {
+                        alert("Your exam has been SUSPENDED by the Proctor!");
+                        document.getElementById('auto_submit').value = "1";
+                        document.getElementById('quizForm').submit();
+                        return;
+                    }
+
+                    if (data.proctor_status !== currentWarningStatus) {
+                        if (data.proctor_status === 'warning_1') {
+                            alert("PROCTOR WARNING 1: Please stay focused on your exam!");
+                        } else if (data.proctor_status === 'warning_2') {
+                            alert("PROCTOR WARNING 2 (FINAL): Next warning will lead to suspension!");
+                        }
+                        currentWarningStatus = data.proctor_status;
+                    }
+
+                    var overlay = document.getElementById('proctor-pause-overlay');
+                    if (data.proctor_paused === 1) {
+                        isPaused = true;
+                        if (overlay) overlay.style.display = 'flex';
+                    } else {
+                        isPaused = false;
+                        if (overlay) overlay.style.display = 'none';
+                    }
+                }
+            })
+            .catch(err => console.error('Proctor heartbeat error:', err));
+        }
+
+        <?php if ($exam_mode === 'official'): ?>
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {
                 focusWarnings++;
@@ -261,9 +395,82 @@ if($num_rows > 0 && $_SESSION['qn'] < $num_rows) {
             var remaining = <?php echo max(0, ($_SESSION['end_time'] ?? time()) - time()); ?>;
             var display = document.querySelector('#time');
             if(display) startTimer(remaining, display);
+
+            var attemptId = <?php echo (int)($_SESSION['last_attempt_id'] ?? 0); ?>;
+            var currentId = <?php echo (int)($current_id ?? 0); ?>;
+            if (attemptId && currentId) {
+                var localKey = 'quiz_attempt_' + attemptId + '_responses';
+                var responses = JSON.parse(localStorage.getItem(localKey) || '{}');
+                if (responses[currentId]) {
+                    var radios = document.getElementsByName('ans');
+                    for (var i = 0; i < radios.length; i++) {
+                        if (parseInt(radios[i].value) === parseInt(responses[currentId])) {
+                            radios[i].checked = true;
+                        }
+                    }
+                }
+            }
+
+            checkProctorState();
+            setInterval(checkProctorState, 3000);
+
+            if (!navigator.onLine) {
+                var banner = document.getElementById('offline-warning-banner');
+                if (banner) banner.style.display = 'flex';
+            }
         };
     </script>
     <style>
+        #offline-warning-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #d97706, #b45309);
+            color: white;
+            text-align: center;
+            padding: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            z-index: 9999;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        #proctor-pause-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(10px);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Poppins', sans-serif;
+        }
+        .pause-card {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 3rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            backdrop-filter: blur(10px);
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 25px 50px -12px rgba(99, 102, 241, 0.2); }
+            50% { box-shadow: 0 25px 50px -12px rgba(99, 102, 241, 0.4); }
+        }
         .quiz-layout {
             display: flex;
             gap: 2rem;
@@ -348,6 +555,21 @@ if($num_rows > 0 && $_SESSION['qn'] < $num_rows) {
     </style>
 </head>
 <body>
+    <div id="offline-warning-banner">
+        <span>⚠️ Connection Interrupted! Working Offline - Progress Safely Cached.</span>
+    </div>
+    
+    <div id="proctor-pause-overlay">
+        <div class="pause-card">
+            <span style="font-size: 3rem; margin-bottom: 1rem; display: block;">⏸️</span>
+            <h2 style="margin-bottom: 1rem; color: white;">Session Paused by Proctor</h2>
+            <p style="color: rgba(255, 255, 255, 0.7); line-height: 1.6; margin: 0;">
+                The examination supervisor has paused your session. Your timer has been frozen. 
+                Please wait for the proctor to resume your session. Do not close or refresh this page.
+            </p>
+        </div>
+    </div>
+
     <?php include("modern_header.php"); ?>
     
     <div class="container">
@@ -419,7 +641,7 @@ if($num_rows > 0 && $_SESSION['qn'] < $num_rows) {
                                     $required_attr = ($exam_mode === 'mock') ? 'required' : '';
                                     echo "
                                     <label class='subject-card' style='display: block; text-align: left; padding: 1.2rem; margin-bottom: 1rem; cursor: pointer; border: 2px solid var(--gray-100); border-radius: 10px; transition: all 0.2s;'>
-                                        <input type='radio' name='ans' value='".$opt['id']."' $checked $required_attr style='margin-right: 1rem;'> 
+                                        <input type='radio' name='ans' value='".$opt['id']."' $checked $required_attr style='margin-right: 1rem;' onchange='syncResponse(".$current_id.", ".$opt['id'].")'> 
                                         ".htmlspecialchars($opt['text'])."
                                     </label>";
                                 }

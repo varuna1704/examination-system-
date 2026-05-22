@@ -53,4 +53,56 @@ function save_attempt(mysqli $conn, int $userId, int $subjectId, string $level, 
         return null;
     }
 }
+
+function update_attempt(mysqli $conn, int $attemptId, int $score, int $total, array $responses): bool
+{
+    $percentage = $total > 0 ? round(($score / $total) * 100, 2) : 0.00;
+    $submittedAt = date('Y-m-d H:i:s');
+
+    $conn->begin_transaction();
+
+    try {
+        $attemptStmt = $conn->prepare(
+            "UPDATE exam_attempts SET score = ?, percentage = ?, submitted_at = ? WHERE id = ?"
+        );
+        $attemptStmt->bind_param(
+            "idsi",
+            $score,
+            $percentage,
+            $submittedAt,
+            $attemptId
+        );
+        $attemptStmt->execute();
+
+        $delStmt = $conn->prepare("DELETE FROM attempt_answers WHERE attempt_id = ?");
+        $delStmt->bind_param("i", $attemptId);
+        $delStmt->execute();
+
+        $answerStmt = $conn->prepare(
+            "INSERT INTO attempt_answers (attempt_id, question_id, selected_answer, is_correct) VALUES (?, ?, ?, ?)"
+        );
+
+        foreach ($responses as $questionId => $response) {
+            $questionId = (int)$questionId;
+            $selectedAnswer = null;
+            $isCorrect = 0;
+
+            if (is_array($response)) {
+                $selectedAnswer = isset($response['selected']) ? (string)$response['selected'] : null;
+                $isCorrect = !empty($response['is_correct']) ? 1 : 0;
+            } else {
+                $selectedAnswer = is_null($response) ? null : (string)$response;
+            }
+
+            $answerStmt->bind_param("iisi", $attemptId, $questionId, $selectedAnswer, $isCorrect);
+            $answerStmt->execute();
+        }
+
+        $conn->commit();
+        return true;
+    } catch (Throwable $e) {
+        $conn->rollback();
+        return false;
+    }
+}
 ?>

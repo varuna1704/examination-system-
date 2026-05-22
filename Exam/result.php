@@ -35,7 +35,7 @@ if ($subjectId <= 0) {
 
 $examMode = $_SESSION['exam_mode'] ?? 'official';
 
-if ($userId > 0 && $subjectId > 0 && empty($_SESSION['attempt_saved'])) {
+if ($userId > 0 && $subjectId > 0 && empty($_SESSION['final_attempt_saved'])) {
     $responses = [];
     $questionIds = $_SESSION['question_ids'] ?? [];
     $userResponses = $_SESSION['user_responses'] ?? [];
@@ -62,10 +62,22 @@ if ($userId > 0 && $subjectId > 0 && empty($_SESSION['attempt_saved'])) {
         }
     }
 
-    $attemptId = save_attempt($conn, $userId, $subjectId, $level, $total, $score, $startedAt, $responses, $examMode);
-    if ($attemptId !== null) {
-        $_SESSION['attempt_saved'] = true;
-        $_SESSION['last_attempt_id'] = $attemptId;
+    if (isset($_SESSION['last_attempt_id']) && $_SESSION['last_attempt_id'] > 0) {
+        $attemptId = $_SESSION['last_attempt_id'];
+        $updated = update_attempt($conn, $attemptId, $score, $total, $responses);
+        if ($updated) {
+            $_SESSION['final_attempt_saved'] = true;
+            // Set proctor_status to completed
+            $statusStmt = $conn->prepare("UPDATE exam_attempts SET proctor_status = 'completed' WHERE id = ?");
+            $statusStmt->bind_param("i", $attemptId);
+            $statusStmt->execute();
+        }
+    } else {
+        $attemptId = save_attempt($conn, $userId, $subjectId, $level, $total, $score, $startedAt, $responses, $examMode);
+        if ($attemptId !== null) {
+            $_SESSION['final_attempt_saved'] = true;
+            $_SESSION['last_attempt_id'] = $attemptId;
+        }
     }
 } else {
     $attemptId = $_SESSION['last_attempt_id'] ?? null;

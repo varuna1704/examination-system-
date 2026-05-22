@@ -33,7 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id'] = (int)$row['id'];
                 $_SESSION['u_name'] = $row['u_name'];
                 $_SESSION['role'] = $row['role'] ?? 'student';
-                header("Location: subject.php");
+                
+                if ($_SESSION['role'] === 'admin') {
+                    header("Location: admin_dashboard.php");
+                } else {
+                    header("Location: subject.php");
+                }
                 exit;
             } else {
                 $error_msg = "Username/Password is incorrect";
